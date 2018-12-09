@@ -3,6 +3,7 @@ package com.shaposhnyk
 import graphql.Scalars
 import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLSchema
+import org.jooq.generated.Tables
 import org.springframework.boot.SpringApplication
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.context.annotation.Bean
@@ -12,6 +13,11 @@ import org.springframework.context.annotation.Bean
 class Application {
     @Bean
     fun schema(): GraphQLSchema {
+        EntityBuilder.newBuilder(Tables.PERSON)
+            .field("ref", Tables.PERSON.PERSONREF)
+            .field(Tables.PERSON.CORRELATIONREF)
+            .build()
+
         return GraphQLSchema
             .newSchema()
             .query(
@@ -22,7 +28,8 @@ class Application {
                             .type(Scalars.GraphQLString)
                             .dataFetcher { "response" }
                     }
-            ).build();
+            )
+            .build();
     }
 }
 
