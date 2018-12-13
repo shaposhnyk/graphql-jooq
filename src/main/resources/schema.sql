@@ -15,14 +15,14 @@ CREATE TABLE identification (
   CONSTRAINT fk_ident_person_ref     FOREIGN KEY (personRef)   REFERENCES person(personRef)
 );
 
-CREATE TABLE contacts (
+CREATE TABLE nationality (
   id              NUMBER(7)     NOT NULL PRIMARY KEY,
   personRef       VARCHAR2(50)  NOT NULL,
   correlationRef  VARCHAR2(50)  NOT NULL,
   countryCode     VARCHAR2(50)  NOT NULL,
-  end_date         VARCHAR2(10),
   begin_date       VARCHAR2(10),
-  is_external      NUMBER(1),
+  end_date         VARCHAR2(10),
+  is_active      NUMBER(1),
 
   CONSTRAINT fk_contacts_person_ref     FOREIGN KEY (personRef)   REFERENCES person(personRef)
 );

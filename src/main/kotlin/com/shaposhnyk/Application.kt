@@ -3,6 +3,7 @@ package com.shaposhnyk
 import graphql.schema.GraphQLObjectType
 import graphql.schema.GraphQLSchema
 import org.jooq.DSLContext
+import org.jooq.Record
 import org.jooq.SQLDialect
 import org.jooq.generated.Tables
 import org.jooq.impl.DSL
@@ -21,6 +22,11 @@ class Application {
         val ident = EntityBuilder.newBuilder(Tables.IDENTIFICATION) { dsl(jdbcTemplate) }
             .field("firstName", Tables.IDENTIFICATION.FIRST_NAME)
             .field("lastName", Tables.IDENTIFICATION.LAST_NAME) { it?.toUpperCase() }
+            .fieldOf { fBuilder ->
+                fBuilder.withName("displayName")
+                    .withSourceColumns(Tables.IDENTIFICATION.FIRST_NAME, Tables.IDENTIFICATION.LAST_NAME)
+                    .extractFrom { displayName(it) }
+            }
             .field("yearOfBirth", Tables.IDENTIFICATION.YEAR_OF_BIRTH)
             .field(Tables.IDENTIFICATION.NATURE)
 
@@ -30,6 +36,8 @@ class Application {
         val people = EntityBuilder.newBuilder(Tables.PERSON) { dsl(jdbcTemplate) }
             .field("ref", Tables.PERSON.PERSONREF)
             .field(Tables.PERSON.CORRELATIONREF)
+            .relOneToMany(nat)
+            .relOneToManyAtOnce(ident);
 
         return GraphQLSchema
             .newSchema()
@@ -43,6 +51,11 @@ class Application {
                     }
             )
             .build();
+    }
+
+    private fun displayName(it: Record?): String {
+        return "M. " + Tables.IDENTIFICATION.FIRST_NAME.get(it) +
+                " " + Tables.IDENTIFICATION.LAST_NAME.get(it)?.toUpperCase()
     }
 
     private fun dsl(jdbcTemplate: JdbcTemplate): DSLContext {
