@@ -96,7 +96,6 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
     fun relOneToManyAtOnce(relatedEntity: EntityBuilder<*>) =
         relOneToMany(relatedEntity.name.toLowerCase() + "List", relatedEntity, atOnce = true)
 
-
     fun addFieldDef(fieldDef: GraphQLFieldDefinition): EntityBuilder<T> {
         fieldDefs.add(fieldDef)
         return this
