@@ -6,17 +6,17 @@ import graphql.schema.DataFetchingEnvironment;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public class CachingFetcher<T> implements DataFetcher<T> {
+public class MemoizingFetcher<T> implements DataFetcher<T> {
   private final DataFetcher<T> delegate;
   private final CompletableFuture<T> futureResult = new CompletableFuture<>();
   private final AtomicBoolean isFetched = new AtomicBoolean(false);
 
-  CachingFetcher(DataFetcher<T> delegate) {
+  MemoizingFetcher(DataFetcher<T> delegate) {
     this.delegate = delegate;
   }
 
-  public static <T> CachingFetcher<T> of(DataFetcher<T> delegate) {
-    return new CachingFetcher<>(delegate);
+  public static <T> MemoizingFetcher<T> of(DataFetcher<T> delegate) {
+    return new MemoizingFetcher<>(delegate);
   }
 
   @Override

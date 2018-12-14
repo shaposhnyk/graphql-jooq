@@ -118,7 +118,7 @@ class EntityBuilder<T : Record>(
         val filterKey = matchedTables.iterator().next().fields
 
         val buildJoinFetcher = relatedEntity.buildJoinFetcher(tableDef, DSL.noCondition(), filterKey)
-        val fullRelatedEntityFetcher = CachingFetcher.of(buildJoinFetcher)
+        val fullRelatedEntityFetcher = MemoizingFetcher.of(buildJoinFetcher)
         val filteringFetcher = FilteringFetcher.of(fullRelatedEntityFetcher, filterKey.toList());
 
         return fieldOf { filedBuilder ->
