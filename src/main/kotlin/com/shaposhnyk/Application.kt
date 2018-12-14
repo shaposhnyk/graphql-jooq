@@ -37,7 +37,7 @@ class Application {
             .field("ref", Tables.PERSON.PERSONREF)
             .field(Tables.PERSON.CORRELATIONREF)
             .relOneToMany(nat)
-            .relOneToManyAtOnce(ident);
+            .relOneToMany(ident);
 
         return GraphQLSchema
             .newSchema()
@@ -59,7 +59,9 @@ class Application {
     }
 
     private fun dsl(jdbcTemplate: JdbcTemplate): DSLContext {
-        return DSL.using(jdbcTemplate.dataSource.connection, SQLDialect.H2)
+        val connection = jdbcTemplate?.dataSource
+            ?.connection
+        return DSL.using(connection, SQLDialect.H2)
     }
 }
 

@@ -56,8 +56,7 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
     fun relOneToMany(
         name: String,
         relatedEntity: EntityBuilder<*>,
-        filterKey: List<TableField<out Record, out Any>>,
-        atOnce: Boolean = false
+        filterKey: List<TableField<out Record, out Any>>
     ): EntityBuilder<T> {
         val gqlType = relatedEntity.buildObjectListType()
         val comment = "List of ${name} related to ${tableDef.name}"
@@ -81,7 +80,7 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
         }
     }
 
-    fun relOneToMany(name: String, relatedEntity: EntityBuilder<*>, atOnce: Boolean = false): EntityBuilder<T> {
+    fun relOneToMany(name: String, relatedEntity: EntityBuilder<*>): EntityBuilder<T> {
         val matchedTables: List<ForeignKey<*, T>> = tableDef.primaryKey.references
             .filter { it.table.equals(relatedEntity.tableDef) }
             .toList()
@@ -97,8 +96,40 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
     fun relOneToMany(relatedEntity: EntityBuilder<*>) =
         relOneToMany(relatedEntity.name.toLowerCase() + "List", relatedEntity)
 
-    fun relOneToManyAtOnce(relatedEntity: EntityBuilder<*>) =
-        relOneToMany(relatedEntity.name.toLowerCase() + "List", relatedEntity, atOnce = true)
+    fun relOneToManyAtOnce(
+        relatedEntity: EntityBuilder<*>
+    ): EntityBuilder<T> {
+        val gqlType = relatedEntity.buildObjectListType()
+        val comment = "List of ${name} related to ${tableDef.name}"
+        val cols = tableDef.primaryKey.fields
+
+        val matchedTables: List<ForeignKey<*, T>> = tableDef.primaryKey.references
+            .filter { it.table.equals(relatedEntity.tableDef) }
+            .toList()
+
+        if (matchedTables.size != 1) {
+            throw IllegalArgumentException("Unknown relation between ${tableDef} and ${relatedEntity.tableDef}")
+        }
+
+        val filterKey = matchedTables.iterator().next().fields
+
+        return fieldOf { filedBuilder ->
+            filedBuilder
+                .withName(name)
+                .withType(gqlType)
+                .withDescription(comment)
+                .withSourceColumns(cols)
+                .extractFromContext { env, parent ->
+                    val filterConditions = filterKey.map { keyFieldAny: TableField<out Record, out Any> ->
+                        val keyField = keyFieldAny as TableField<out Record, Any>
+                        keyField.eq(keyField.get(parent))
+                    }.toList()
+                    val allFilterCondtions = DSL.and(filterConditions)
+                    val value = relatedEntity.buildFetcher(allFilterCondtions).get(env)
+                    value
+                }
+        }
+    }
 
     fun addFieldDef(fieldDef: GraphQLFieldDefinition): EntityBuilder<T> {
         fieldDefs.add(fieldDef)
@@ -125,6 +156,26 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
         }
     }
 
+    fun buildJoinFetcher(anotherTableDef: TableImpl<*>, condition: Condition): DataFetcher<Iterable<Record>> {
+        return DataFetcher { env ->
+            val ctx: DSLContext = getDslContext()
+            logger.info("Fetching entity {} using filter {}", tableDef.name, condition);
+            try {
+                val fields = extractSelectedFields(env)
+
+                ctx.select(fields)
+                    .from(tableDef)
+                    .join(anotherTableDef).onKey()
+                    .where(condition)
+                    .fetchStream()
+                    .collect(Collectors.toList())
+            } finally {
+                logger.trace("Closing connection: {}", ctx);
+                ctx.close()
+            }
+        }
+    }
+
     private fun fetchEntity(env: DataFetchingEnvironment, condition: Condition): Stream<T> {
         val ctx: DSLContext = getDslContext()
         logger.info("Fetching entity {} using filter {}", tableDef.name, condition);
@@ -137,7 +188,7 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
                 .fetchStream()
                 .map { it as T? }
         } finally {
-            logger.trace("Closing connection: {}", ctx);
+            logger.info("Closing connection: {}", tableDef.name);
             ctx.close()
         }
     }
@@ -158,7 +209,7 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
         } else if (java.lang.Integer.valueOf(0).javaClass == type) {
             return Scalars.GraphQLInt
         }
-        TODO("not supported")
+        TODO("not jet supported")
     }
 
     private fun fieldValueOrNull(field: TableField<T, *>, parent: Record?): Any? {

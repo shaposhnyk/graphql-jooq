@@ -1,8 +1,10 @@
+DROP TABLE IF EXISTS person;
 CREATE TABLE person (
   personRef       VARCHAR2(50)     NOT NULL PRIMARY KEY,
   correlationRef  VARCHAR2(50)     NOT NULL
 );
 
+DROP TABLE IF EXISTS identification ;
 CREATE TABLE identification (
   id              NUMBER(7)     NOT NULL PRIMARY KEY,
   personRef       VARCHAR2(50)  NOT NULL,
@@ -15,6 +17,7 @@ CREATE TABLE identification (
   CONSTRAINT fk_ident_person_ref     FOREIGN KEY (personRef)   REFERENCES person(personRef)
 );
 
+DROP TABLE IF EXISTS nationality ;
 CREATE TABLE nationality (
   id              NUMBER(7)     NOT NULL PRIMARY KEY,
   personRef       VARCHAR2(50)  NOT NULL,
