@@ -5,6 +5,7 @@ import graphql.schema.*
 import org.jooq.*
 import org.jooq.impl.DSL
 import org.jooq.impl.TableImpl
+import org.slf4j.LoggerFactory
 import java.util.stream.Collectors
 import java.util.stream.Stream
 import kotlin.reflect.KType
@@ -55,7 +56,7 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
     fun relOneToMany(
         name: String,
         relatedEntity: EntityBuilder<*>,
-        filterKey: TableField<Record, String>,
+        filterKey: List<TableField<out Record, out Any>>,
         atOnce: Boolean = false
     ): EntityBuilder<T> {
         val gqlType = relatedEntity.buildObjectListType()
@@ -69,8 +70,12 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
                 .withDescription(comment)
                 .withSourceColumns(cols)
                 .extractFromContext { env, parent ->
-                    val keyValue: Any = cols.iterator().next().getValue(parent)
-                    val value = relatedEntity.buildFetcher(filterKey.eq(keyValue as String)).get(env)
+                    val filterConditions = filterKey.map { keyFieldAny: TableField<out Record, out Any> ->
+                        val keyField = keyFieldAny as TableField<out Record, Any>
+                        keyField.eq(keyField.get(parent))
+                    }.toList()
+                    val allFilterCondtions = DSL.and(filterConditions)
+                    val value = relatedEntity.buildFetcher(allFilterCondtions).get(env)
                     value
                 }
         }
@@ -85,8 +90,7 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
             throw IllegalArgumentException("Unknown relation between ${tableDef} and ${relatedEntity.tableDef}")
         }
 
-        val relationKey: TableField<Record, String> =
-            matchedTables.iterator().next().fields.iterator().next() as TableField<Record, String>
+        val relationKey = matchedTables.iterator().next().fields
         return relOneToMany(name, relatedEntity, relationKey)
     }
 
@@ -123,13 +127,19 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
 
     private fun fetchEntity(env: DataFetchingEnvironment, condition: Condition): Stream<T> {
         val ctx: DSLContext = getDslContext()
-        val fields = extractSelectedFields(env)
+        logger.info("Fetching entity {} using filter {}", tableDef.name, condition);
+        try {
+            val fields = extractSelectedFields(env)
 
-        return ctx.select(fields)
-            .from(tableDef)
-            .where(condition)
-            .fetchStream()
-            .map { it as T }
+            return ctx.select(fields)
+                .from(tableDef)
+                .where(condition)
+                .fetchStream()
+                .map { it as T? }
+        } finally {
+            logger.trace("Closing connection: {}", ctx);
+            ctx.close()
+        }
     }
 
     private fun getDslContext(): DSLContext = ctxSupplier()
@@ -162,5 +172,7 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
         fun <T : Record> newBuilder(objectType: TableImpl<T>, supplier: () -> DSLContext): EntityBuilder<T> {
             return EntityBuilder(objectType.name, objectType, supplier)
         }
+
+        val logger = LoggerFactory.getLogger(EntityBuilder::class.java)
     }
 }
