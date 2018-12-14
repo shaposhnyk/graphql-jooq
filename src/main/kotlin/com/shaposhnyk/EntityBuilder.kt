@@ -20,8 +20,8 @@ class EntityBuilder<T : Record>(
     val fieldDefsByName = mutableMapOf<String, List<TableField<T, *>>>()
     val conditionByName = mutableMapOf<String, Condition>()
 
-    fun fieldOf(builderFactory: (JooqFieldBuilder<T>) -> JooqFieldBuilder<T>): EntityBuilder<T> {
-        val initBuilder = JooqFieldBuilder<T>()
+    fun fieldOf(builderFactory: (FieldBuilder<T>) -> FieldBuilder<T>): EntityBuilder<T> {
+        val initBuilder = FieldBuilder<T>()
             .fetchEntityWith { it.getSource<Record>() } // default fetcher
             .withType(Scalars.GraphQLString) // default type
 
