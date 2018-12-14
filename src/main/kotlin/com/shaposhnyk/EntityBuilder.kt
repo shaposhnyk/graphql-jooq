@@ -11,7 +11,11 @@ import java.util.stream.Stream
 import kotlin.reflect.KType
 import kotlin.reflect.jvm.reflect
 
-class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, val ctxSupplier: () -> DSLContext) {
+class EntityBuilder<T : Record>(
+    val name: String,
+    val tableDef: TableImpl<T>,
+    val ctxSupplier: () -> DSLContext
+) {
     val fieldDefs = mutableListOf<GraphQLFieldDefinition>()
     val fieldDefsByName = mutableMapOf<String, List<TableField<T, *>>>()
     val conditionByName = mutableMapOf<String, Condition>()
@@ -113,19 +117,18 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
 
         val filterKey = matchedTables.iterator().next().fields
 
+        val buildJoinFetcher = relatedEntity.buildJoinFetcher(tableDef, DSL.noCondition(), filterKey)
+        val fullRelatedEntityFetcher = CachingFetcher.of(buildJoinFetcher)
+        val filteringFetcher = FilteringFetcher.of(fullRelatedEntityFetcher, filterKey.toList());
+
         return fieldOf { filedBuilder ->
             filedBuilder
-                .withName(name)
+                .withName(relatedEntity.name.toLowerCase() + "List")
                 .withType(gqlType)
                 .withDescription(comment)
                 .withSourceColumns(cols)
                 .extractFromContext { env, parent ->
-                    val filterConditions = filterKey.map { keyFieldAny: TableField<out Record, out Any> ->
-                        val keyField = keyFieldAny as TableField<out Record, Any>
-                        keyField.eq(keyField.get(parent))
-                    }.toList()
-                    val allFilterCondtions = DSL.and(filterConditions)
-                    val value = relatedEntity.buildFetcher(allFilterCondtions).get(env)
+                    val value = filteringFetcher.get(env, parent)
                     value
                 }
         }
@@ -156,19 +159,25 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
         }
     }
 
-    fun buildJoinFetcher(anotherTableDef: TableImpl<*>, condition: Condition): DataFetcher<Iterable<Record>> {
+    fun buildJoinFetcher(
+        anotherTableDef: TableImpl<*>,
+        condition: Condition,
+        keyFields: List<TableField<*, *>>
+    ): DataFetcher<Iterable<Record>> {
         return DataFetcher { env ->
             val ctx: DSLContext = getDslContext()
             logger.info("Fetching entity {} using filter {}", tableDef.name, condition);
             try {
-                val fields = extractSelectedFields(env)
+                val fields: Set<TableField<*, *>> = extractSelectedFields(env).plus(keyFields)
 
-                ctx.select(fields)
+                val resultList = ctx.select(fields)
                     .from(tableDef)
                     .join(anotherTableDef).onKey()
                     .where(condition)
                     .fetchStream()
                     .collect(Collectors.toList())
+                logger.debug("Fetched {} records of type: {}", resultList.size, tableDef.name);
+                resultList
             } finally {
                 logger.trace("Closing connection: {}", ctx);
                 ctx.close()
@@ -195,7 +204,7 @@ class EntityBuilder<T : Record>(val name: String, val tableDef: TableImpl<T>, va
 
     private fun getDslContext(): DSLContext = ctxSupplier()
 
-    private fun extractSelectedFields(env: DataFetchingEnvironment): Set<TableField<T, *>?> {
+    private fun extractSelectedFields(env: DataFetchingEnvironment): Set<TableField<*, *>> {
         val fieldNames: Array<String> = env.selectionSet.get().keys.toTypedArray()
         return fieldNames.flatMap { name -> fieldDefsByName[name]?.asIterable() ?: emptyList() }
             .toSet()

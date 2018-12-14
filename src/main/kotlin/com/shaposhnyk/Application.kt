@@ -11,15 +11,15 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.SpringApplication
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.context.annotation.Bean
-import org.springframework.jdbc.core.JdbcTemplate
+import javax.sql.DataSource
 
 
 @SpringBootApplication
 class Application {
     @Bean
     @Autowired
-    fun schema(jdbcTemplate: JdbcTemplate): GraphQLSchema {
-        val ident = EntityBuilder.newBuilder(Tables.IDENTIFICATION) { dsl(jdbcTemplate) }
+    fun schema(dataSource: DataSource): GraphQLSchema {
+        val ident = EntityBuilder.newBuilder(Tables.IDENTIFICATION) { dsl(dataSource) }
             .field("firstName", Tables.IDENTIFICATION.FIRST_NAME)
             .field("lastName", Tables.IDENTIFICATION.LAST_NAME) { it?.toUpperCase() }
             .fieldOf { fBuilder ->
@@ -30,14 +30,14 @@ class Application {
             .field("yearOfBirth", Tables.IDENTIFICATION.YEAR_OF_BIRTH)
             .field(Tables.IDENTIFICATION.NATURE)
 
-        val nat = EntityBuilder.newBuilder(Tables.NATIONALITY) { dsl(jdbcTemplate) }
+        val nat = EntityBuilder.newBuilder(Tables.NATIONALITY) { dsl(dataSource) }
             .field("countryRef", Tables.NATIONALITY.COUNTRYCODE)
 
-        val people = EntityBuilder.newBuilder(Tables.PERSON) { dsl(jdbcTemplate) }
+        val people = EntityBuilder.newBuilder(Tables.PERSON) { dsl(dataSource) }
             .field("ref", Tables.PERSON.PERSONREF)
             .field(Tables.PERSON.CORRELATIONREF)
             .relOneToMany(nat)
-            .relOneToMany(ident);
+            .relOneToManyAtOnce(ident);
 
         return GraphQLSchema
             .newSchema()
@@ -58,9 +58,8 @@ class Application {
                 " " + Tables.IDENTIFICATION.LAST_NAME.get(it)?.toUpperCase()
     }
 
-    private fun dsl(jdbcTemplate: JdbcTemplate): DSLContext {
-        val connection = jdbcTemplate?.dataSource
-            ?.connection
+    private fun dsl(dataSource: DataSource): DSLContext {
+        val connection = dataSource.connection
         return DSL.using(connection, SQLDialect.H2)
     }
 }
