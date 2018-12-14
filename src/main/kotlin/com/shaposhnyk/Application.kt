@@ -59,8 +59,7 @@ class Application {
     }
 
     private fun dsl(dataSource: DataSource): DSLContext {
-        val connection = dataSource.connection
-        return DSL.using(connection, SQLDialect.H2)
+        return DSL.using(dataSource, SQLDialect.H2)
     }
 }
 

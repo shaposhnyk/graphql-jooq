@@ -22,7 +22,7 @@ class EntityBuilder<T : Record>(
 
     fun fieldOf(builderFactory: (FieldBuilder<T>) -> FieldBuilder<T>): EntityBuilder<T> {
         val initBuilder = FieldBuilder<T>()
-            .fetchEntityWith { it.getSource<Record>() } // default fetcher
+            .fetchParentWith { it.getSource<Record>() } // default fetcher
             .withType(Scalars.GraphQLString) // default type
 
         val builder = builderFactory(initBuilder);
@@ -116,10 +116,8 @@ class EntityBuilder<T : Record>(
         }
 
         val filterKey = matchedTables.iterator().next().fields
-
-        val buildJoinFetcher = relatedEntity.buildJoinFetcher(tableDef, DSL.noCondition(), filterKey)
-        val fullRelatedEntityFetcher = MemoizingFetcher.of(buildJoinFetcher)
-        val filteringFetcher = FilteringFetcher.of(fullRelatedEntityFetcher, filterKey.toList());
+        val joinFetcher = relatedEntity.buildJoinFetcher(tableDef, DSL.noCondition(), filterKey)
+        val fullRelatedEntityFetcher = MemoizingFetcher.of(joinFetcher)
 
         return fieldOf { filedBuilder ->
             filedBuilder
@@ -128,6 +126,7 @@ class EntityBuilder<T : Record>(
                 .withDescription(comment)
                 .withSourceColumns(cols)
                 .extractFromContext { env, parent ->
+                    val filteringFetcher = FilteringFetcher.of(fullRelatedEntityFetcher, filterKey.toList())
                     val value = filteringFetcher.get(env, parent)
                     value
                 }
@@ -150,9 +149,9 @@ class EntityBuilder<T : Record>(
         return GraphQLTypeReference(tableDef.name)
     }
 
-    fun buildFetcher(): DataFetcher<Iterable<T>> = buildFetcher(DSL.noCondition())
+    fun buildFetcher() = buildFetcher(DSL.noCondition())
 
-    fun buildFetcher(filteringCondition: Condition): DataFetcher<Iterable<T>> {
+    fun buildFetcher(filteringCondition: Condition): DataFetcher<Iterable<out Record>> {
         return DataFetcher {
             fetchEntity(it, filteringCondition)
                 .collect(Collectors.toList())

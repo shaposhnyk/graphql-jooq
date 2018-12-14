@@ -41,22 +41,22 @@ class FieldBuilder<T : Record>(
 
     fun withSourceColumns(cols: List<TableField<T, *>>): FieldBuilder<T> {
         this.sourceColumns.addAll(cols)
-        return this;
+        return this
     }
 
     fun extractFrom(extractor: (Record?) -> Any?): FieldBuilder<T> {
         this.extractor = { _, parent -> extractor(parent) }
-        return this;
+        return this
     }
 
     fun extractFromContext(extractor: (DataFetchingEnvironment, Record?) -> Any?): FieldBuilder<T> {
-        this.extractor = extractor;
-        return this;
+        this.extractor = extractor
+        return this
     }
 
-    fun fetchEntityWith(entityFetcher: (DataFetchingEnvironment) -> Record?): FieldBuilder<T> {
+    fun fetchParentWith(entityFetcher: (DataFetchingEnvironment) -> Record?): FieldBuilder<T> {
         this.entityFetcher = entityFetcher
-        return this;
+        return this
     }
 
     fun decorate(decorator: (Any?) -> Any?): FieldBuilder<T> {
@@ -68,7 +68,7 @@ class FieldBuilder<T : Record>(
         return { env ->
             val parent = this.entityFetcher(env)
             logger.debug("{} - fetched parent: {}", gqlName, parent)
-            val value = this.extractor(env, parent)
+            val value = extractor(env, parent)
             logger.debug("{} - fetched value: {}", gqlName, value)
             val decoratedValue = this.decorator(value)
             decoratedValue
