@@ -18,23 +18,17 @@ class EntityBuilder<T : Record>(
 ) {
     val fieldDefs = mutableListOf<GraphQLFieldDefinition>()
     val fieldDefsByName = mutableMapOf<String, List<TableField<T, *>>>()
-    val conditionByName = mutableMapOf<String, Condition>()
+
+    val argDefs = mutableListOf<GraphQLArgument>()
+    val filterArgsByName = mutableMapOf<String, (Any?) -> Condition>()
 
     fun fieldOf(builderFactory: (FieldBuilder<T>) -> FieldBuilder<T>): EntityBuilder<T> {
         val initBuilder = FieldBuilder<T>()
             .fetchParentWith { it.getSource<Record>() } // default fetcher
             .withType(Scalars.GraphQLString) // default type
 
-        val builder = builderFactory(initBuilder);
-        val dataFetcher = builder.buildFetcher()
-
-        val fieldDef = GraphQLFieldDefinition.newFieldDefinition()
-            .name(builder.gqlName)
-            .type(builder.gqlType)
-            .description(builder.desciption)
-            .dataFetcher(dataFetcher)
-            .build()
-
+        val builder = builderFactory(initBuilder)
+        val fieldDef = builder.buildFieldDefinition()
         fieldDefsByName[fieldDef.name] = builder.sourceColumns.toList()
         return addFieldDef(fieldDef)
     }
@@ -51,6 +45,49 @@ class EntityBuilder<T : Record>(
                 .extractFrom { fieldValueOrNull(field, it) }
                 .decorate { decorator(it as R?) }
         }
+    }
+
+    /**
+     * Field with default (EQ) filter
+     */
+    fun fieldAndFilter(name: String, field: TableField<T, *>) = field(name, field)
+        .filterEq(name, field as TableField<T, Any?>)
+
+    private fun filter(name: String, field: TableField<T, Any?>): GraphQLArgument.Builder {
+        return GraphQLArgument.Builder()
+            .name(name)
+            .type(mapToScalar(field.type, null))
+            .defaultValue(null)
+    }
+
+    /**
+     * Equality filter on a given column
+     */
+    fun filterEq(name: String, field: TableField<T, Any?>): EntityBuilder<T> {
+        val arg = filter(name, field)
+            .description("filter items by ${name} == <value>")
+            .defaultValue(null)
+            .build()
+
+        return addFilter(arg) { field.eq(it) }
+    }
+
+    /**
+     * Equality filter on a given column
+     */
+    fun filterNotEq(name: String, field: TableField<T, Any?>): EntityBuilder<T> {
+        val arg = filter(name + "Not", field)
+            .description("filter items by ${name} != <value>")
+            .defaultValue(null)
+            .build()
+
+        return addFilter(arg) { field.ne(it) }
+    }
+
+    private fun addFilter(arg: GraphQLArgument, filterFactory: (Any?) -> Condition): EntityBuilder<T> {
+        argDefs.add(arg)
+        filterArgsByName[arg.name] = filterFactory
+        return this
     }
 
     fun field(name: String, field: TableField<T, *>): EntityBuilder<T> = field(name, field) { it }
@@ -116,9 +153,6 @@ class EntityBuilder<T : Record>(
         }
 
         val filterKey = matchedTables.iterator().next().fields
-        val joinFetcher = relatedEntity.buildJoinFetcher(tableDef, DSL.noCondition(), filterKey)
-        val fullRelatedEntityFetcher = MemoizingFetcher.of(joinFetcher)
-
         return fieldOf { filedBuilder ->
             filedBuilder
                 .withName(relatedEntity.name.toLowerCase() + "List")
@@ -126,6 +160,9 @@ class EntityBuilder<T : Record>(
                 .withDescription(comment)
                 .withSourceColumns(cols)
                 .extractFromContext { env, parent ->
+                    val joinFetcher = relatedEntity.buildJoinFetcher(tableDef, DSL.noCondition(), filterKey)
+                    val fullRelatedEntityFetcher = MemoizingFetcher.of(joinFetcher)
+
                     val filteringFetcher = FilteringFetcher.of(fullRelatedEntityFetcher, filterKey.toList())
                     val value = filteringFetcher.get(env, parent)
                     value
@@ -189,16 +226,28 @@ class EntityBuilder<T : Record>(
         logger.info("Fetching entity {} using filter {}", tableDef.name, condition);
         try {
             val fields = extractSelectedFields(env)
+            val filters = buildConditions(env)
+            val finalCondition = if (filters.isEmpty()) condition
+            else DSL.and(condition, DSL.and(filters))
 
             return ctx.select(fields)
                 .from(tableDef)
-                .where(condition)
+                .where(finalCondition)
                 .fetchStream()
                 .map { it as T? }
         } finally {
-            logger.info("Closing connection: {}", tableDef.name);
+            logger.trace("Closing connection: {}", tableDef.name);
             ctx.close()
         }
+    }
+
+    private fun buildConditions(env: DataFetchingEnvironment): List<Condition> {
+        return env.arguments.entries
+            .map {
+                val function = filterArgsByName[it.key] as ((Any?) -> Condition)
+                function(it.value)
+
+            }
     }
 
     private fun getDslContext(): DSLContext = ctxSupplier()
@@ -225,6 +274,10 @@ class EntityBuilder<T : Record>(
             return null
         }
         return field.getValue(parent)
+    }
+
+    fun buildArguments(): List<GraphQLArgument> {
+        return argDefs.toList()
     }
 
     companion object {

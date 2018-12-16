@@ -1,6 +1,8 @@
 package com.shaposhnyk
 
+import graphql.schema.DataFetcher
 import graphql.schema.DataFetchingEnvironment
+import graphql.schema.GraphQLFieldDefinition
 import graphql.schema.GraphQLOutputType
 import org.jooq.Record
 import org.jooq.TableField
@@ -64,15 +66,35 @@ class FieldBuilder<T : Record>(
         return this
     }
 
-    fun buildFetcher(): (DataFetchingEnvironment) -> Any? {
-        return { env ->
-            val parent = this.entityFetcher(env)
-            logger.debug("{} - fetched parent: {}", gqlName, parent)
-            val value = extractor(env, parent)
-            logger.debug("{} - fetched value: {}", gqlName, value)
-            val decoratedValue = this.decorator(value)
-            decoratedValue
-        }
+    fun fetchItems(env: DataFetchingEnvironment): Any? {
+        env.executionId
+        val parent = this.entityFetcher(env)
+        logger.debug("{} - fetched parent: {}", gqlName, parent)
+        val value = extractor(env, parent)
+        logger.debug("{} - fetched value: {}", gqlName, value)
+        val decoratedValue = this.decorator(value)
+        return decoratedValue
+    }
+
+    fun builderFieldDefinitionWithDFF(): GraphQLFieldDefinition {
+        return GraphQLFieldDefinition.newFieldDefinition()
+            .name(gqlName)
+            .type(gqlType)
+            .description(desciption)
+            .dataFetcherFactory { dfe ->
+                logger.info("Init builder: {}", gqlName)
+                DataFetcher { env -> fetchItems(env) }
+            }
+            .build()
+    }
+
+    fun buildFieldDefinition(): GraphQLFieldDefinition {
+        return GraphQLFieldDefinition.newFieldDefinition()
+            .name(gqlName)
+            .type(gqlType)
+            .description(desciption)
+            .dataFetcher { fetchItems(it) }
+            .build()
     }
 
     companion object {

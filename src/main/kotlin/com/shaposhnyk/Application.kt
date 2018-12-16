@@ -34,7 +34,7 @@ class Application {
             .field("countryRef", Tables.NATIONALITY.COUNTRYCODE)
 
         val people = EntityBuilder.newBuilder(Tables.PERSON) { dsl(dataSource) }
-            .field("ref", Tables.PERSON.PERSONREF)
+            .fieldAndFilter("ref", Tables.PERSON.PERSONREF)
             .field(Tables.PERSON.CORRELATIONREF)
             .relOneToMany(nat)
             .relOneToManyAtOnce(ident);
@@ -48,6 +48,7 @@ class Application {
                         it.name("findPersons")
                             .type(people.buildObjectListType())
                             .dataFetcher(people.buildFetcher())
+                            .argument(people.buildArguments())
                     }
             )
             .build();
