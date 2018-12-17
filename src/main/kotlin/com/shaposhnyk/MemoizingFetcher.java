@@ -11,7 +11,7 @@ public class MemoizingFetcher<T> implements DataFetcher<T> {
   private final CompletableFuture<T> futureResult = new CompletableFuture<>();
   private final AtomicBoolean isFetched = new AtomicBoolean(false);
 
-  MemoizingFetcher(DataFetcher<T> delegate) {
+  private MemoizingFetcher(DataFetcher<T> delegate) {
     this.delegate = delegate;
   }
 

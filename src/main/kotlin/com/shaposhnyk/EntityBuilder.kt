@@ -51,9 +51,9 @@ class EntityBuilder<T : Record>(
      * Field with default (EQ) filter
      */
     fun fieldAndFilter(name: String, field: TableField<T, *>) = field(name, field)
-        .filterEq(name, field as TableField<T, Any?>)
+        .filterEq(name, field)
 
-    private fun filter(name: String, field: TableField<T, Any?>): GraphQLArgument.Builder {
+    private fun filter(name: String, field: TableField<T, *>): GraphQLArgument.Builder {
         return GraphQLArgument.Builder()
             .name(name)
             .type(mapToScalar(field.type, null))
@@ -63,25 +63,41 @@ class EntityBuilder<T : Record>(
     /**
      * Equality filter on a given column
      */
-    fun filterEq(name: String, field: TableField<T, Any?>): EntityBuilder<T> {
+    fun filterEq(name: String, field: TableField<T, *>, gqlName: String? = null): EntityBuilder<T> {
         val arg = filter(name, field)
-            .description("filter items by ${name} == <value>")
+            .description("filter items by ${gqlName ?: name} == <value>")
             .defaultValue(null)
             .build()
 
-        return addFilter(arg) { field.eq(it) }
+        return addFilter(arg) { downcast(field).eq(it) }
     }
 
     /**
      * Equality filter on a given column
      */
-    fun filterNotEq(name: String, field: TableField<T, Any?>): EntityBuilder<T> {
-        val arg = filter(name + "Not", field)
-            .description("filter items by ${name} != <value>")
+    fun filterContains(name: String, field: TableField<T, *>, gqlName: String? = null): EntityBuilder<T> {
+        val arg = filter(name, field)
+            .description("filter items by ${gqlName ?: name} contains <value>")
             .defaultValue(null)
             .build()
 
-        return addFilter(arg) { field.ne(it) }
+        return addFilter(arg) { downcast(field).contains(it) }
+    }
+
+    /**
+     * Equality filter on a given column
+     */
+    fun filterNotEq(name: String, field: TableField<T, *>, gqlName: String? = null): EntityBuilder<T> {
+        val arg = filter(name, field)
+            .description("filter items by ${gqlName ?: name} != <value>")
+            .defaultValue(null)
+            .build()
+
+        return addFilter(arg) { downcast(field).ne(it) }
+    }
+
+    private fun downcast(field: TableField<T, *>): TableField<T, Any?> {
+        return field as TableField<T, Any?>
     }
 
     private fun addFilter(arg: GraphQLArgument, filterFactory: (Any?) -> Condition): EntityBuilder<T> {
@@ -153,6 +169,9 @@ class EntityBuilder<T : Record>(
         }
 
         val filterKey = matchedTables.iterator().next().fields
+        val joinFetcher = relatedEntity.buildJoinFetcher(tableDef, DSL.noCondition(), filterKey)
+        val fullRelatedEntityFetcher = MemoizingFetcher.of(joinFetcher)
+
         return fieldOf { filedBuilder ->
             filedBuilder
                 .withName(relatedEntity.name.toLowerCase() + "List")
@@ -160,9 +179,6 @@ class EntityBuilder<T : Record>(
                 .withDescription(comment)
                 .withSourceColumns(cols)
                 .extractFromContext { env, parent ->
-                    val joinFetcher = relatedEntity.buildJoinFetcher(tableDef, DSL.noCondition(), filterKey)
-                    val fullRelatedEntityFetcher = MemoizingFetcher.of(joinFetcher)
-
                     val filteringFetcher = FilteringFetcher.of(fullRelatedEntityFetcher, filterKey.toList())
                     val value = filteringFetcher.get(env, parent)
                     value
@@ -204,7 +220,7 @@ class EntityBuilder<T : Record>(
             val ctx: DSLContext = getDslContext()
             logger.info("Fetching entity {} using filter {}", tableDef.name, condition);
             try {
-                val fields: Set<TableField<*, *>> = extractSelectedFields(env).plus(keyFields)
+                val fields: Set<TableField<*, *>> = buildSelectedColumns(env).plus(keyFields)
 
                 val resultList = ctx.select(fields)
                     .from(tableDef)
@@ -225,8 +241,8 @@ class EntityBuilder<T : Record>(
         val ctx: DSLContext = getDslContext()
         logger.info("Fetching entity {} using filter {}", tableDef.name, condition);
         try {
-            val fields = extractSelectedFields(env)
-            val filters = buildConditions(env)
+            val fields = buildSelectedColumns(env)
+            val filters = buildFilterConditions(env)
             val finalCondition = if (filters.isEmpty()) condition
             else DSL.and(condition, DSL.and(filters))
 
@@ -241,18 +257,17 @@ class EntityBuilder<T : Record>(
         }
     }
 
-    private fun buildConditions(env: DataFetchingEnvironment): List<Condition> {
+    private fun buildFilterConditions(env: DataFetchingEnvironment): List<Condition> {
         return env.arguments.entries
             .map {
-                val function = filterArgsByName[it.key] as ((Any?) -> Condition)
-                function(it.value)
-
+                val function = filterArgsByName[it.key]
+                function?.invoke(it.value) ?: DSL.noCondition()
             }
     }
 
     private fun getDslContext(): DSLContext = ctxSupplier()
 
-    private fun extractSelectedFields(env: DataFetchingEnvironment): Set<TableField<*, *>> {
+    private fun buildSelectedColumns(env: DataFetchingEnvironment): Set<TableField<*, *>> {
         val fieldNames: Array<String> = env.selectionSet.get().keys.toTypedArray()
         return fieldNames.flatMap { name -> fieldDefsByName[name]?.asIterable() ?: emptyList() }
             .toSet()

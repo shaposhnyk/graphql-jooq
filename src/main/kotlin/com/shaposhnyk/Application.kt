@@ -37,7 +37,9 @@ class Application {
             .fieldAndFilter("ref", Tables.PERSON.PERSONREF)
             .field(Tables.PERSON.CORRELATIONREF)
             .relOneToMany(nat)
-            .relOneToManyAtOnce(ident);
+            .relOneToManyAtOnce(ident)
+            .filterNotEq("refNot", Tables.PERSON.PERSONREF)
+            .filterContains("refLike", Tables.PERSON.PERSONREF)
 
         return GraphQLSchema
             .newSchema()
