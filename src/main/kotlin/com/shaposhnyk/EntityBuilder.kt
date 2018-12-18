@@ -218,14 +218,18 @@ class EntityBuilder<T : Record>(
     ): DataFetcher<Iterable<Record>> {
         return DataFetcher { env ->
             val ctx: DSLContext = getDslContext()
-            logger.info("Fetching entity {} using filter {}", tableDef.name, condition);
+
             try {
                 val fields: Set<TableField<*, *>> = buildSelectedColumns(env).plus(keyFields)
+                val filters = buildFilterConditions(env)
+                val finalCondition = if (filters.isEmpty()) condition
+                else DSL.and(condition, DSL.and(filters))
+                logger.info("Fetching entity {} JOIN {} onKeys() using filter {}", tableDef.name, anotherTableDef.name, finalCondition);
 
                 val resultList = ctx.select(fields)
                     .from(tableDef)
                     .join(anotherTableDef).onKey()
-                    .where(condition)
+                    .where(finalCondition)
                     .fetchStream()
                     .collect(Collectors.toList())
                 logger.debug("Fetched {} records of type: {}", resultList.size, tableDef.name);
@@ -239,12 +243,12 @@ class EntityBuilder<T : Record>(
 
     private fun fetchEntity(env: DataFetchingEnvironment, condition: Condition): Stream<T> {
         val ctx: DSLContext = getDslContext()
-        logger.info("Fetching entity {} using filter {}", tableDef.name, condition);
         try {
             val fields = buildSelectedColumns(env)
             val filters = buildFilterConditions(env)
             val finalCondition = if (filters.isEmpty()) condition
             else DSL.and(condition, DSL.and(filters))
+            logger.info("Fetching entity {} using filter {}", tableDef.name, finalCondition);
 
             return ctx.select(fields)
                 .from(tableDef)
