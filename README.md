@@ -1,4 +1,4 @@
-# Simple GraphQL facade for a RDMS
+# Simple GraphQL facade for an RDMS
 Simple GraphQL facade for Relational Database via JOOQ
 
 ## Motivations
