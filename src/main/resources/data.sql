@@ -11,3 +11,7 @@ INSERT INTO nationality VALUES (2, 'ABC/33300', 'yyyy1', 'CH', '2000-10-10', '20
 INSERT INTO nationality VALUES (3, 'ABC/33300', 'yyyy2', 'FR', '2000-10-10', '2015-12-12', 1);
 INSERT INTO nationality VALUES (4, 'ABC/33300', 'yyyy3', 'US', '2000-10-10', '2015-12-12', 1);
 INSERT INTO nationality VALUES (5, 'ABC/33300', 'yyyy4', 'CN', '2000-10-10', '2015-12-12', 1);
+
+INSERT INTO relations VALUES ('ABC/11100', 'is spouse of', 'ABC/33300');
+INSERT INTO relations VALUES ('ABC/33300', 'is child of', 'ABC/22200');
+INSERT INTO relations VALUES ('ABC/22200', 'is parent of', 'ABC/11100');

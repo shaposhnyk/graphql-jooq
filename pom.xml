@@ -170,7 +170,7 @@
                                     <properties>
                                         <property>
                                             <key>scripts</key>
-                                            <value>src/main/resources/person.sql</value>
+                                            <value>src/main/resources/schema.sql</value>
                                         </property>
                                         <property>
                                             <key>sort</key>

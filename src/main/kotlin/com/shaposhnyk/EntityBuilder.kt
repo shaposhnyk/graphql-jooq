@@ -113,7 +113,7 @@ class EntityBuilder<T : Record>(
     fun relOneToMany(
         name: String,
         relatedEntity: EntityBuilder<*>,
-        filterKey: List<TableField<out Record, out Any>>
+        filterKeys: List<TableField<out Record, out Any>>
     ): EntityBuilder<T> {
         val gqlType = relatedEntity.buildObjectListType()
         val comment = "List of ${name} related to ${tableDef.name}"
@@ -126,10 +126,11 @@ class EntityBuilder<T : Record>(
                 .withDescription(comment)
                 .withSourceColumns(cols)
                 .extractFromContext { env, parent ->
-                    val filterConditions = filterKey.map { keyFieldAny: TableField<out Record, out Any> ->
-                        val keyField = keyFieldAny as TableField<out Record, Any>
-                        keyField.eq(keyField.get(parent))
-                    }.toList()
+                    val filterConditions = filterKeys
+                        .map { keyFieldAny: TableField<out Record, out Any> ->
+                            val keyField = keyFieldAny as TableField<out Record, Any>
+                            keyField.eq((cols.first() as TableField<out Record, Any>).get(parent))
+                        }.toList()
                     val allFilterCondtions = DSL.and(filterConditions)
                     val value = relatedEntity.buildFetcher(allFilterCondtions).get(env)
                     value
@@ -137,13 +138,29 @@ class EntityBuilder<T : Record>(
         }
     }
 
-    fun relOneToMany(name: String, relatedEntity: EntityBuilder<*>): EntityBuilder<T> {
+    fun relOneToMany(
+        name: String,
+        relatedEntity: EntityBuilder<*>,
+        vararg specifierColumns: TableField<out Record, *>? = emptyArray()
+    ): EntityBuilder<T> {
         val matchedTables: List<ForeignKey<*, T>> = tableDef.primaryKey.references
             .filter { it.table.equals(relatedEntity.tableDef) }
+            .filterNotNull()
             .toList()
 
-        if (matchedTables.size != 1) {
-            throw IllegalArgumentException("Unknown relation between ${tableDef} and ${relatedEntity.tableDef}")
+        if (matchedTables.size > 1) {
+            if (specifierColumns.size > 0) {
+                val rematchedTables = matchedTables.filter { it.fields.equals(specifierColumns.toList()) }
+                    .toList()
+                if (rematchedTables.size == 1) {
+                    val relationKey = rematchedTables.iterator().next().fields
+                    return relOneToMany(name, relatedEntity, relationKey)
+                }
+            }
+
+            throw IllegalArgumentException("Too many relations between ${tableDef} and ${relatedEntity.tableDef}")
+        } else if (matchedTables.isEmpty()) {
+            throw IllegalArgumentException("No relations found between ${tableDef} and ${relatedEntity.tableDef}")
         }
 
         val relationKey = matchedTables.iterator().next().fields
@@ -224,7 +241,12 @@ class EntityBuilder<T : Record>(
                 val filters = buildFilterConditions(env)
                 val finalCondition = if (filters.isEmpty()) condition
                 else DSL.and(condition, DSL.and(filters))
-                logger.info("Fetching entity {} JOIN {} onKeys() using filter {}", tableDef.name, anotherTableDef.name, finalCondition);
+                logger.info(
+                    "Fetching entity {} JOIN {} onKeys() using filter {}",
+                    tableDef.name,
+                    anotherTableDef.name,
+                    finalCondition
+                );
 
                 val resultList = ctx.select(fields)
                     .from(tableDef)
@@ -277,7 +299,7 @@ class EntityBuilder<T : Record>(
             .toSet()
     }
 
-    fun buildObjectListType() = GraphQLList.list(buildObjectType().build())
+    fun buildObjectListType() = GraphQLList.list(buildObjectTypeRef())
 
     private fun <R> mapToScalar(type: Class<R?>, decoratorClass: Class<KType>?): GraphQLScalarType {
         if ("".javaClass == type) {
@@ -297,6 +319,14 @@ class EntityBuilder<T : Record>(
 
     fun buildArguments(): List<GraphQLArgument> {
         return argDefs.toList()
+    }
+
+    fun defaultList(name: String): GraphQLFieldDefinition.Builder {
+        return GraphQLFieldDefinition.newFieldDefinition()
+            .name(name)
+            .type(buildObjectListType())
+            .dataFetcher(buildFetcher())
+            .argument(buildArguments())
     }
 
     companion object {
